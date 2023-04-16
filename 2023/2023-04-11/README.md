@@ -7,5 +7,5 @@
 I recorded the progress of making this graph with the `camcorder` package:
 
 <p align="center">
-  <img src="https://github.com/szeller42/tidytuesday/blob/main/2023/2023-04-/20230411.gif?raw=true" width="60%">
+  <img src="https://github.com/szeller42/tidytuesday/blob/main/2023/2023-04-11/20230411.gif?raw=true" width="60%">
 </p>

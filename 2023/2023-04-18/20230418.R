@@ -4,13 +4,13 @@ library(rnaturalearth)
 library(sf)
 library(showtext)
 library(ggtext)
-library(scatterpie)
 library(showtext)
+library(sfhotspot)
 
+#add fonts
 font_add_google("Piedra")
 font_add_google("Source Sans Pro")
-
-options(scipen = 999)
+showtext_auto()
 
 # get the data
 tuesdata <- tidytuesdayR::tt_load('2023-04-18')
@@ -27,45 +27,40 @@ founder_crops <- tuesdata$founder_crops |>
                                .default = stringr::str_to_sentence(founder_crop))) |> 
   mutate(is_founder_crop = !is.na(founder_crop))
 
+# find largest non founder crop
+largest_non_founder_crop <- founder_crops |> 
+  summarize(n = sum(n),
+            samples = n(),
+            summed_prop = sum(prop),
+            .by = c("is_founder_crop", "genus", "founder_crop")) |> 
+  filter(is_founder_crop == FALSE & !is.na(genus)) |> 
+  arrange(-summed_prop) |>   
+  head(1) |> 
+  pull(genus)
+
 founder_crops_sf <- founder_crops |> 
   st_as_sf(coords = c("longitude", "latitude")) |> 
+  # project it
   st_set_crs(4326)  
 
-non_founder_crops_sf <- founder_crops_sf |> 
-  summarize(n = sum(prop*n),
-            .by = c("site_name", "is_founder_crop")) |> 
-  pivot_wider(id_cols = "site_name",
-              names_from = "is_founder_crop",
-              names_prefix = "founder_",
-              values_from = "n")
+n_by_site <- founder_crops_sf |> 
+  filter(genus == largest_non_founder_crop) |> 
+  summarize(number_seeds = sum(n), .by = c("site_name", "geometry"))  
 
-prop_by_site <- founder_crops |> 
-  summarize(founder_crop_n = sum(n), .by = c("site_name", 
-                                             "founder_crop",
-                                             "latitude", "longitude")) |> 
-  drop_na() |> 
-  mutate(founder_crop = gsub(" ", "_", founder_crop)) |> 
-  pivot_wider(id_cols = c("site_name", "latitude", "longitude"),
-              names_from = "founder_crop",
-              values_from = "founder_crop_n",
-              values_fill = 0)
-
-site_n <- founder_crops |> 
-  summarize(density = sum(n)/10e5, 
-            .by = c("site_name", "latitude", "longitude"))
-
-wheat_time <- founder_crops_sf |> 
-  filter(founder_crop == "Wheat") |> 
-  summarize(n = sum(n),
-            prop = mean(prop),
-            .by = c("phase", "age_start", "age_end", "taxon", "taxon_detail"))
-  
-founder_crop_names <- prop_by_site |> select(-site_name, -latitude, -longitude) |> 
-  names()
+# calculate density
+n_kde <- n_by_site |> 
+  st_transform("ESRI:53035") |> 
+  hotspot_kde(weights = number_seeds,
+              grid_type = "hex",
+              cell_size = 5000)
 
 # cropped world
 world <- ne_countries(scale = "medium", 
                       returnclass = "sf")  
+
+# crop density to world
+n_kde_cropped <- n_kde |> 
+  st_intersection(world |> st_transform("ESRI:53035"))
 
 gg_record(
   dir = file.path("2023", "2023-04-18", "recording"), # where to save the recording
@@ -77,6 +72,13 @@ gg_record(
 )
 
 caption_text <- 'Data Source: The "Neolithic Founder Crops" in Southwest Asia: Research Compendium'
+subtitle_text <- 
+  paste0("While it is often assumed that in Neolithic times, only the eight founder ",
+        "crops were cultivated, researchers have found scores of other crops as well. ",
+        "The most frequent one is ",
+        largest_non_founder_crop,
+        ".")
+
 
 ggplot() +
   geom_rect(data = data.frame(),
@@ -85,44 +87,66 @@ ggplot() +
                 ymin = 25,
                 ymax = 75),
             fill = alpha("lightblue", 3)) +
+  # just outlines
   geom_sf(data = world,
-          col = "white",
+          col = NA,
           fill = alpha("lightgoldenrod", .8)) +
-  geom_scatterpie(aes(x = longitude,
-                      y = latitude),
-                  data = prop_by_site,
-                  cols = founder_crop_names,
-                  legend_name = "Crop") +
-  # geom_sf(data = site_n,
-  #            aes(size = n),
-  #         alpha = .3) +
-  # stat_density_2d_filled(data = site_n,
-  #                 aes(x = longitude,
-  #                     y = latitude,
-  #                     fill = density),
-  #                 geom = "polygon",
-  #                 contour_var = "density") +
+  # kde
+  geom_sf(data = n_kde_cropped,
+          aes(fill = kde/1000),
+          # alpha = .5,
+          colour = NA) +
+  # sites
+  geom_sf(data = n_by_site,
+          alpha = .3,
+          size = .1) +
+  # borders
+  geom_sf(data = world,
+          col = "black",
+          alpha = .8,
+          fill = NA) +
   coord_sf(xlim = c(min(founder_crops$longitude - 3),
                     max(founder_crops$longitude + 3)), 
            ylim = c(min(founder_crops$latitude - 3),
                     max(founder_crops$latitude + 3)), 
            expand = FALSE) +
+  annotate("text",
+           x = 31, y = 33,
+           label = "Mediterranean sea",
+           family = "Source Sans Pro",
+           colour = "grey30",
+           size = 8,
+           alpha = .6) +
+  scale_fill_distiller(direction = 1,
+                       labels = scales::comma) +
   theme_void() +
   theme(
-        plot.caption = element_textbox_simple(vjust = 1,
-                                              hjust = .2),
+        text = element_text(family = "Source Sans Pro",
+                            size = 30),
+        plot.title = element_text(family = "Piedra",
+                                  size = 45),
+        plot.subtitle = element_textbox_simple(
+          linewidth = 0.6,
+          lineheight = 0.1,
+          margin = margin(b = .1, t = .1, unit = "in")
+        ), 
+        plot.caption = element_textbox_simple(
+          vjust = 1,
+          hjust = .2,
+          margin = margin(b = .2, t = .1, unit = "in"),
+          size = 20),
         plot.background = element_rect(fill = "#FCF5E5",
                                        colour = "#FCF5E5"),
-        plot.title = element_text(family = "Piedra",
-                             size = 70),
-        text = element_text(family = "Source Sans Pro",
-                            size = 30)) +
-  labs(x = NULL,
-       y = NULL,
-       title = "Where were founder crops found?",
-       col = "",
-       caption = caption_text,
-       size = "Number of seeds found \n(in 10,000s)")
+        legend.position = "bottom",
+        legend.key.width = unit(.8, "cm"),
+        legend.key.height = unit(.2, "cm"),
+        legend.text = element_text(size = 25)) +
+  labs(title = paste0(largest_non_founder_crop,
+                      ": the most common non-founder crop"),
+       subtitle = subtitle_text,
+       fill = paste(largest_non_founder_crop,
+                    "seeds found (in thsd.)"),
+       caption = caption_text)
 
 # line chart: wheat over time
 ggplot() +

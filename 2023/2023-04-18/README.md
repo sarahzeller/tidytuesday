@@ -1,6 +1,6 @@
 <h1 align="center"> Founder crops </h1>
   
-This is still work in progress, but this week's data really did not want to be wrangled... Still, here is my WIP-graph: 
+This week, I checked out the most frequent crop during Neolithic times that was not considered one of the eigth founder crops. 
 
 <p align="center">
   <img src="https://github.com/szeller42/tidytuesday/blob/main/2023/2023-04-18/20230418.png?raw=true" width="60%">

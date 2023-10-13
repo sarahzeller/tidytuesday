@@ -1,4 +1,4 @@
-<h1 align="center"> Title </h1>
+<h1 align="center"> Witches in the USA </h1>
 
 <p align="center">
   <img src="/2023/2023-10-10/20231010.png" width="60%">

@@ -246,5 +246,5 @@ gg_playback(
   first_image_duration = 4,
   last_image_duration = 20,
   frame_duration = .25,
-  background = bg_col
+  background = "white"
 )
